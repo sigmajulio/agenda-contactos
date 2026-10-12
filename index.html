@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agenda de Contactos</title>
+    <link rel="stylesheet" href="src/styles/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="encabezado">
+        <h1 class="encabezado__titulo">Agenda de Contactos</h1>
+        <p class="encabezado__subtitulo">
+          TypeScript + MVC &middot; sin frameworks &middot; persistencia en localStorage
+        </p>
+      </header>
+
+      <main class="contenido">
+        <section class="panel" aria-labelledby="titulo-formulario">
+          <h2 class="panel__titulo" id="titulo-formulario" data-ref="titulo-formulario">
+            Nuevo contacto
+          </h2>
+
+          <form class="formulario" data-ref="formulario" novalidate>
+            <div class="campo">
+              <label class="campo__etiqueta" for="nombre">Nombre</label>
+              <input
+                class="campo__control"
+                type="text"
+                id="nombre"
+                name="nombre"
+                placeholder="Ej. María López"
+                autocomplete="off"
+              />
+              <p class="campo__error" data-error="nombre" role="alert"></p>
+            </div>
+
+            <div class="campo">
+              <label class="campo__etiqueta" for="telefono">Teléfono</label>
+              <input
+                class="campo__control"
+                type="tel"
+                id="telefono"
+                name="telefono"
+                placeholder="7123-4567 o +503 7123 4567"
+                autocomplete="off"
+              />
+              <p class="campo__error" data-error="telefono" role="alert"></p>
+            </div>
+
+            <div class="campo">
+              <label class="campo__etiqueta" for="email">Email</label>
+              <input
+                class="campo__control"
+                type="email"
+                id="email"
+                name="email"
+                placeholder="maria.lopez@correo.com"
+                autocomplete="off"
+              />
+              <p class="campo__error" data-error="email" role="alert"></p>
+            </div>
+
+            <div class="formulario__acciones">
+              <button class="boton boton--primario" type="submit" data-ref="boton-enviar">
+                Guardar contacto
+              </button>
+              <button class="boton boton--neutro" type="button" data-ref="boton-cancelar" hidden>
+                Cancelar edición
+              </button>
+            </div>
+          </form>
+
+          <p class="mensaje-exito" data-ref="mensaje-exito" role="status" hidden></p>
+        </section>
+
+        <section class="panel" aria-labelledby="titulo-listado">
+          <div class="barra">
+            <h2 class="panel__titulo" id="titulo-listado">Contactos</h2>
+            <span class="contador" data-ref="contador">0 contactos</span>
+          </div>
+
+          <div class="barra barra--controles">
+            <div class="buscador">
+              <label class="buscador__etiqueta" for="busqueda">
+                Buscar por nombre o teléfono
+              </label>
+              <input
+                class="campo__control"
+                type="search"
+                id="busqueda"
+                data-ref="busqueda"
+                placeholder="Escribe para filtrar en vivo…"
+                autocomplete="off"
+              />
+            </div>
+
+            <div
+              class="selector-vista"
+              data-ref="selector-vista"
+              role="group"
+              aria-label="Cambiar vista"
+            >
+              <button
+                class="boton boton--vista boton--vista-activa"
+                type="button"
+                data-vista="tarjetas"
+              >
+                Tarjetas
+              </button>
+              <button class="boton boton--vista" type="button" data-vista="tabla">Tabla</button>
+            </div>
+          </div>
+
+          <div class="listado" data-ref="listado"></div>
+          <p class="estado-vacio" data-ref="estado-vacio" hidden></p>
+        </section>
+      </main>
+
+      <footer class="pie">
+        <p>Proyecto 2 &middot; Programación Orientada a Eventos</p>
+      </footer>
+
+      <div class="modal" data-ref="modal" hidden>
+        <div class="modal__caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+          <h3 class="modal__titulo" id="modal-titulo">Eliminar contacto</h3>
+          <p class="modal__texto" data-ref="modal-texto"></p>
+          <div class="modal__acciones">
+            <button class="boton boton--neutro" type="button" data-ref="modal-cancelar">
+              Cancelar
+            </button>
+            <button class="boton boton--peligro" type="button" data-ref="modal-confirmar">
+              Sí, eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="dist/main.js"></script>
+  </body>
+</html>

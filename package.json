@@ -1,0 +1,22 @@
+{
+  "name": "agenda-contactos",
+  "version": "1.0.0",
+  "description": "Agenda de contactos con arquitectura MVC en TypeScript, sin frameworks ni bundlers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "start": "python3 -m http.server 8080"
+  },
+  "keywords": [
+    "typescript",
+    "mvc",
+    "localstorage"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "~6.0.2"
+  }
+}
