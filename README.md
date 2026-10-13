@@ -6,14 +6,13 @@ Aplicación web para gestionar contactos (nombre, teléfono, email). Construida 
 
 - Node.js 18+
 - pnpm
-- Python 3 (o cualquier servidor estático, solo para `pnpm start`)
 
 ## Uso
 
 ```bash
-pnpm install   # instala TypeScript (única dependencia)
+pnpm install   # instala TypeScript y serve
 pnpm build     # compila src/ -> dist/
-pnpm start     # sirve la app en localhost:8080
+pnpm start     # sirve la app en localhost:8080 (funciona igual en Windows, Linux y macOS)
 ```
 
 Otros scripts útiles: `pnpm watch` (recompila al guardar) y `pnpm typecheck` (solo revisa tipos).

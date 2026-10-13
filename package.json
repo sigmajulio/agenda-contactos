@@ -8,7 +8,7 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "start": "python3 -m http.server 8080"
+    "start": "serve -l 8080"
   },
   "keywords": [
     "typescript",
@@ -17,6 +17,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "serve": "^14.2.6",
     "typescript": "~6.0.2"
   }
 }
