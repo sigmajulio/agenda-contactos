@@ -30,6 +30,7 @@
                 id="nombre"
                 name="nombre"
                 placeholder="Ej. María López"
+                maxlength="80"
                 autocomplete="off"
               />
               <p class="campo__error" data-error="nombre" role="alert"></p>
@@ -61,6 +62,17 @@
               <p class="campo__error" data-error="email" role="alert"></p>
             </div>
 
+            <div class="campo">
+              <label class="campo__etiqueta" for="categoria">Categoría</label>
+              <select class="campo__control" id="categoria" name="categoria">
+                <option value="">Selecciona una categoría…</option>
+                <option value="familia">Familia</option>
+                <option value="trabajo">Trabajo</option>
+                <option value="amigos">Amigos</option>
+              </select>
+              <p class="campo__error" data-error="categoria" role="alert"></p>
+            </div>
+
             <div class="formulario__acciones">
               <button class="boton boton--primario" type="submit" data-ref="boton-enviar">
                 Guardar contacto
@@ -70,8 +82,11 @@
               </button>
             </div>
           </form>
+        </section>
 
-          <p class="mensaje-exito" data-ref="mensaje-exito" role="status" hidden></p>
+        <section class="panel" aria-labelledby="titulo-resumen">
+          <h2 class="panel__titulo" id="titulo-resumen">Resumen por categoría</h2>
+          <div class="resumen" data-ref="resumen" role="group" aria-label="Filtrar por categoría"></div>
         </section>
 
         <section class="panel" aria-labelledby="titulo-listado">
@@ -80,7 +95,7 @@
             <span class="contador" data-ref="contador">0 contactos</span>
           </div>
 
-          <div class="barra barra--controles">
+          <div class="controles">
             <div class="buscador">
               <label class="buscador__etiqueta" for="busqueda">
                 Buscar por nombre o teléfono
@@ -95,6 +110,21 @@
               />
             </div>
 
+            <div class="control">
+              <label class="buscador__etiqueta" for="filtro-categoria">Categoría</label>
+              <select class="campo__control" id="filtro-categoria" data-ref="filtro-categoria"></select>
+            </div>
+
+            <div class="control">
+              <label class="buscador__etiqueta" for="orden">Orden</label>
+              <select class="campo__control" id="orden" data-ref="orden">
+                <option value="asc">Nombre A → Z</option>
+                <option value="desc">Nombre Z → A</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="barra barra--acciones">
             <div
               class="selector-vista"
               data-ref="selector-vista"
@@ -110,6 +140,10 @@
               </button>
               <button class="boton boton--vista" type="button" data-vista="tabla">Tabla</button>
             </div>
+
+            <button class="boton boton--neutro" type="button" data-ref="boton-exportar">
+              Exportar CSV
+            </button>
           </div>
 
           <div class="listado" data-ref="listado"></div>
@@ -118,8 +152,10 @@
       </main>
 
       <footer class="pie">
-        <p>Proyecto 2 &middot; Programación Orientada a Eventos</p>
+        <p>Parcial 2 &middot; Programación Orientada a Eventos</p>
       </footer>
+
+      <div class="notificaciones" data-ref="notificaciones" aria-live="polite"></div>
 
       <div class="modal" data-ref="modal" hidden>
         <div class="modal__caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">

@@ -1,92 +1,95 @@
-import { Contacto } from '../models/Contacto.js';
-import type { DatosContacto, ErroresValidacion, IContacto } from '../models/Contacto.js';
+import type { Contacto } from '../models/Contacto.js';
+import type {
+  Consulta,
+  ContactoModel,
+  DatosFormulario,
+  FiltroCategoria,
+  OrdenNombre,
+  ResultadoOperacion,
+} from '../models/ContactoModel.js';
 import type { ContactoView } from '../views/ContactoView.js';
-import type { StorageService } from '../services/StorageService.js';
 
+/**
+ * Controlador: recibe los eventos de la vista, delega la lógica al modelo
+ * y le indica a la vista qué mostrar. No toca el DOM ni localStorage.
+ */
 export class ContactoController {
-  private static readonly LONGITUD_MINIMA_NOMBRE: number = 2;
-  private static readonly PATRON_TELEFONO_SV: RegExp = /^[267]\d{7}$/;
-  private static readonly PATRON_EMAIL: RegExp = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
-
   private readonly vista: ContactoView;
-  private readonly servicio: StorageService;
-  private contactos: Contacto[] = [];
-  private terminoBusqueda: string = '';
+  private readonly modelo: ContactoModel;
+  private consulta: Consulta = { termino: '', categoria: 'todas', orden: 'asc' };
   private idEnEdicion: string | null = null;
 
-  public constructor(vista: ContactoView, servicio: StorageService) {
+  public constructor(vista: ContactoView, modelo: ContactoModel) {
     this.vista = vista;
-    this.servicio = servicio;
+    this.modelo = modelo;
   }
 
   public iniciar(): void {
-    this.contactos = this.servicio
-      .obtenerTodos()
-      .map((plano: IContacto): Contacto => Contacto.desdeObjetoPlano(plano));
+    this.modelo.cargar();
 
-    this.vista.alGuardar((datos: DatosContacto): void => this.enviarFormulario(datos));
-    this.vista.alBuscar((termino: string): void => this.buscar(termino));
-    this.vista.alEditar((id: string): void => this.iniciarEdicion(id));
-    this.vista.alEliminar((id: string): void => this.eliminar(id));
-    this.vista.alCancelarEdicion((): void => this.cancelarEdicion());
+    this.vista.alGuardar((datos: DatosFormulario): void => this.handleSubmit(datos));
+    this.vista.alBuscar((termino: string): void => this.handleSearch(termino));
+    this.vista.alFiltrar((categoria: FiltroCategoria): void => this.handleFilter(categoria));
+    this.vista.alOrdenar((orden: OrdenNombre): void => this.handleSort(orden));
+    this.vista.alEditar((id: string): void => this.handleEdit(id));
+    this.vista.alEliminar((id: string): void => this.handleDelete(id));
+    this.vista.alCancelarEdicion((): void => this.handleCancelEdit());
+    this.vista.alExportar((): void => this.handleExport());
 
     this.refrescarVista();
   }
 
-  public crear(datos: DatosContacto): boolean {
-    const errores: ErroresValidacion = this.validar(datos, null);
-    if (Object.keys(errores).length > 0) {
-      this.vista.mostrarErrores(errores);
-      return false;
+  // ---------- Manejadores de eventos ----------
+
+  private handleSubmit(datos: DatosFormulario): void {
+    if (this.idEnEdicion !== null) {
+      this.handleUpdate(this.idEnEdicion, datos);
+      return;
     }
-    this.contactos.push(new Contacto(this.normalizar(datos)));
-    this.persistir();
-    this.vista.limpiarErrores();
+    this.handleCreate(datos);
+  }
+
+  private handleCreate(datos: DatosFormulario): void {
+    const resultado: ResultadoOperacion = this.modelo.addContacto(datos);
+    if (!resultado.ok) {
+      this.vista.mostrarErrores(resultado.errores);
+      this.vista.notificar('Revisa los campos marcados.', 'error');
+      return;
+    }
     this.vista.limpiarFormulario();
-    this.vista.mostrarExito('Contacto agregado correctamente.');
+    this.vista.notificar(`${resultado.contacto.nombre} se agregó a la agenda.`, 'exito');
     this.refrescarVista();
-    return true;
   }
 
-  public actualizar(id: string, datos: DatosContacto): boolean {
-    const contacto: Contacto | undefined = this.buscarPorId(id);
-    if (contacto === undefined) {
-      return false;
+  /** RF-02 */
+  private handleUpdate(id: string, datos: DatosFormulario): void {
+    const resultado: ResultadoOperacion = this.modelo.updateContacto(id, datos);
+    if (!resultado.ok) {
+      this.vista.mostrarErrores(resultado.errores);
+      this.vista.notificar('No se pudo actualizar: revisa los campos marcados.', 'error');
+      return;
     }
-    const errores: ErroresValidacion = this.validar(datos, id);
-    if (Object.keys(errores).length > 0) {
-      this.vista.mostrarErrores(errores);
-      return false;
-    }
-    contacto.actualizar(this.normalizar(datos));
-    this.persistir();
-    this.cancelarEdicion();
-    this.vista.mostrarExito('Contacto actualizado correctamente.');
+    this.handleCancelEdit();
+    this.vista.notificar(`${resultado.contacto.nombre} se actualizó correctamente.`, 'exito');
     this.refrescarVista();
-    return true;
   }
 
-  public eliminar(id: string): void {
-    const cantidadPrevia: number = this.contactos.length;
-    this.contactos = this.contactos.filter((contacto: Contacto): boolean => contacto.id !== id);
-    if (this.contactos.length === cantidadPrevia) {
+  /** RF-03: la vista ya pidió confirmación en el modal antes de llamar aquí. */
+  private handleDelete(id: string): void {
+    const eliminado: Contacto | undefined = this.modelo.deleteContacto(id);
+    if (eliminado === undefined) {
+      this.vista.notificar('Ese contacto ya no existe.', 'error');
       return;
     }
     if (this.idEnEdicion === id) {
-      this.cancelarEdicion();
+      this.handleCancelEdit();
     }
-    this.persistir();
-    this.vista.mostrarExito('Contacto eliminado.');
+    this.vista.notificar(`${eliminado.nombre} se eliminó.`, 'info');
     this.refrescarVista();
   }
 
-  public buscar(termino: string): void {
-    this.terminoBusqueda = termino;
-    this.refrescarVista();
-  }
-
-  public iniciarEdicion(id: string): void {
-    const contacto: Contacto | undefined = this.buscarPorId(id);
+  private handleEdit(id: string): void {
+    const contacto: Contacto | undefined = this.modelo.obtenerPorId(id);
     if (contacto === undefined) {
       return;
     }
@@ -94,94 +97,46 @@ export class ContactoController {
     this.vista.activarModoEdicion(contacto);
   }
 
-  public cancelarEdicion(): void {
+  private handleCancelEdit(): void {
     this.idEnEdicion = null;
     this.vista.desactivarModoEdicion();
   }
 
-  public validar(datos: DatosContacto, idExcluido: string | null): ErroresValidacion {
-    const errores: ErroresValidacion = {};
-
-    const nombre: string = datos.nombre.trim();
-    if (nombre.length === 0) {
-      errores.nombre = 'El nombre es obligatorio.';
-    } else if (nombre.length < ContactoController.LONGITUD_MINIMA_NOMBRE) {
-      errores.nombre = 'El nombre debe tener al menos 2 caracteres.';
-    }
-
-    const telefono: string | null = this.normalizarTelefono(datos.telefono);
-    if (datos.telefono.trim().length === 0) {
-      errores.telefono = 'El teléfono es obligatorio.';
-    } else if (telefono === null) {
-      errores.telefono = 'Formato inválido. Usa 8 dígitos que inicien con 2, 6 o 7 (ej. 7123-4567).';
-    } else if (this.existeTelefono(telefono, idExcluido)) {
-      errores.telefono = 'Ya existe un contacto con ese teléfono.';
-    }
-
-    const email: string = datos.email.trim();
-    if (email.length === 0) {
-      errores.email = 'El email es obligatorio.';
-    } else if (!ContactoController.PATRON_EMAIL.test(email)) {
-      errores.email = 'Formato de email inválido (ej. nombre@correo.com).';
-    }
-
-    return errores;
+  private handleSearch(termino: string): void {
+    this.consulta = { ...this.consulta, termino };
+    this.refrescarVista();
   }
 
-  public normalizarTelefono(valor: string): string | null {
-    const soloDigitos: string = valor.trim().replace(/[\s\-().]/g, '');
-    const sinPrefijo: string = soloDigitos.replace(/^\+?503/, '');
-    if (!ContactoController.PATRON_TELEFONO_SV.test(sinPrefijo)) {
-      return null;
-    }
-    return `${sinPrefijo.slice(0, 4)}-${sinPrefijo.slice(4)}`;
+  /** RF-04 */
+  private handleFilter(categoria: FiltroCategoria): void {
+    this.consulta = { ...this.consulta, categoria };
+    this.refrescarVista();
   }
 
-  public obtenerFiltrados(): Contacto[] {
-    return this.contactos
-      .filter((contacto: Contacto): boolean => contacto.coincideCon(this.terminoBusqueda))
-      .sort((a: Contacto, b: Contacto): number => a.nombre.localeCompare(b.nombre, 'es'));
+  /** RF-05 */
+  private handleSort(orden: OrdenNombre): void {
+    this.consulta = { ...this.consulta, orden };
+    this.refrescarVista();
   }
 
-  public contarTodos(): number {
-    return this.contactos.length;
-  }
-
-  private enviarFormulario(datos: DatosContacto): void {
-    if (this.idEnEdicion !== null) {
-      this.actualizar(this.idEnEdicion, datos);
+  /** Reto adicional: exporta a CSV lo que se está viendo (búsqueda + filtro + orden). */
+  private handleExport(): void {
+    const visibles: Contacto[] = this.modelo.consultar(this.consulta);
+    if (visibles.length === 0) {
+      this.vista.notificar('No hay contactos para exportar.', 'error');
       return;
     }
-    this.crear(datos);
-  }
-
-  private normalizar(datos: DatosContacto): DatosContacto {
-    return {
-      nombre: datos.nombre.trim().replace(/\s+/g, ' '),
-      telefono: this.normalizarTelefono(datos.telefono) ?? datos.telefono.trim(),
-      email: datos.email.trim().toLowerCase(),
-    };
-  }
-
-  private existeTelefono(telefonoNormalizado: string, idExcluido: string | null): boolean {
-    return this.contactos.some(
-      (contacto: Contacto): boolean =>
-        contacto.id !== idExcluido && contacto.telefono === telefonoNormalizado,
-    );
-  }
-
-  private buscarPorId(id: string): Contacto | undefined {
-    return this.contactos.find((contacto: Contacto): boolean => contacto.id === id);
-  }
-
-  private persistir(): void {
-    const planos: IContacto[] = this.contactos.map((contacto: Contacto): IContacto =>
-      contacto.aObjetoPlano(),
-    );
-    this.servicio.guardarTodos(planos);
+    const fecha: string = new Date().toISOString().slice(0, 10);
+    this.vista.descargarArchivo(`contactos-${fecha}.csv`, this.modelo.toCSV(visibles), 'text/csv');
+    const palabra: string = visibles.length === 1 ? 'contacto' : 'contactos';
+    this.vista.notificar(`Se exportaron ${visibles.length} ${palabra} a CSV.`, 'exito');
   }
 
   private refrescarVista(): void {
-    this.vista.renderizar(this.obtenerFiltrados(), this.contarTodos());
+    this.vista.renderizar(
+      this.modelo.consultar(this.consulta),
+      this.modelo.contarTodos(),
+      this.modelo.getContadorPorCategoria(),
+    );
   }
 }

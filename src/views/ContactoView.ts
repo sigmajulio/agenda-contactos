@@ -1,34 +1,50 @@
+import { CATEGORIAS, ETIQUETAS_CATEGORIA, esCategoria } from '../models/Contacto.js';
+import type { CampoContacto, Contacto, ErroresValidacion } from '../models/Contacto.js';
 import type {
-  Contacto,
-  DatosContacto,
-  CampoContacto,
-  ErroresValidacion,
-} from '../models/Contacto.js';
+  ContadorCategorias,
+  DatosFormulario,
+  FiltroCategoria,
+  OrdenNombre,
+} from '../models/ContactoModel.js';
 
 export type ModoVista = 'tarjetas' | 'tabla';
+export type TipoNotificacion = 'exito' | 'error' | 'info';
 
-type ManejadorDatos = (datos: DatosContacto) => void;
+type ManejadorDatos = (datos: DatosFormulario) => void;
 type ManejadorTexto = (texto: string) => void;
 type ManejadorId = (id: string) => void;
+type ManejadorFiltro = (categoria: FiltroCategoria) => void;
+type ManejadorOrden = (orden: OrdenNombre) => void;
 type ManejadorSimple = () => void;
 
-const CAMPOS: readonly CampoContacto[] = ['nombre', 'telefono', 'email'];
+const CAMPOS: readonly CampoContacto[] = ['nombre', 'telefono', 'email', 'categoria'];
+const DURACION_NOTIFICACION_MS: number = 3200;
+const MAXIMO_NOTIFICACIONES: number = 3;
 
+/**
+ * Vista: única clase que toca el DOM. Renderiza, lee el formulario y avisa al
+ * controlador mediante callbacks. No valida ni decide reglas de negocio.
+ */
 export class ContactoView {
   private readonly raiz: Document;
   private readonly formulario: HTMLFormElement;
   private readonly entradaNombre: HTMLInputElement;
   private readonly entradaTelefono: HTMLInputElement;
   private readonly entradaEmail: HTMLInputElement;
+  private readonly selectorCategoria: HTMLSelectElement;
   private readonly entradaBusqueda: HTMLInputElement;
+  private readonly filtroCategoria: HTMLSelectElement;
+  private readonly selectorOrden: HTMLSelectElement;
   private readonly tituloFormulario: HTMLElement;
   private readonly botonEnviar: HTMLButtonElement;
   private readonly botonCancelar: HTMLButtonElement;
-  private readonly mensajeExito: HTMLElement;
+  private readonly botonExportar: HTMLButtonElement;
+  private readonly resumen: HTMLElement;
   private readonly contador: HTMLElement;
   private readonly listado: HTMLElement;
   private readonly estadoVacio: HTMLElement;
   private readonly selectorVista: HTMLElement;
+  private readonly notificaciones: HTMLElement;
   private readonly modal: HTMLElement;
   private readonly modalTexto: HTMLElement;
   private readonly modalConfirmar: HTMLButtonElement;
@@ -38,13 +54,15 @@ export class ContactoView {
   private contactosVisibles: readonly Contacto[] = [];
   private totalContactos: number = 0;
   private idPendiente: string | null = null;
-  private temporizadorExito: number | null = null;
 
   private manejadorGuardar: ManejadorDatos | null = null;
   private manejadorBuscar: ManejadorTexto | null = null;
+  private manejadorFiltrar: ManejadorFiltro | null = null;
+  private manejadorOrdenar: ManejadorOrden | null = null;
   private manejadorEditar: ManejadorId | null = null;
   private manejadorEliminar: ManejadorId | null = null;
   private manejadorCancelar: ManejadorSimple | null = null;
+  private manejadorExportar: ManejadorSimple | null = null;
 
   public constructor(raiz: Document = document) {
     this.raiz = raiz;
@@ -52,15 +70,20 @@ export class ContactoView {
     this.entradaNombre = this.obtener<HTMLInputElement>('#nombre');
     this.entradaTelefono = this.obtener<HTMLInputElement>('#telefono');
     this.entradaEmail = this.obtener<HTMLInputElement>('#email');
+    this.selectorCategoria = this.obtener<HTMLSelectElement>('#categoria');
     this.entradaBusqueda = this.obtener<HTMLInputElement>('[data-ref="busqueda"]');
+    this.filtroCategoria = this.obtener<HTMLSelectElement>('[data-ref="filtro-categoria"]');
+    this.selectorOrden = this.obtener<HTMLSelectElement>('[data-ref="orden"]');
     this.tituloFormulario = this.obtener<HTMLElement>('[data-ref="titulo-formulario"]');
     this.botonEnviar = this.obtener<HTMLButtonElement>('[data-ref="boton-enviar"]');
     this.botonCancelar = this.obtener<HTMLButtonElement>('[data-ref="boton-cancelar"]');
-    this.mensajeExito = this.obtener<HTMLElement>('[data-ref="mensaje-exito"]');
+    this.botonExportar = this.obtener<HTMLButtonElement>('[data-ref="boton-exportar"]');
+    this.resumen = this.obtener<HTMLElement>('[data-ref="resumen"]');
     this.contador = this.obtener<HTMLElement>('[data-ref="contador"]');
     this.listado = this.obtener<HTMLElement>('[data-ref="listado"]');
     this.estadoVacio = this.obtener<HTMLElement>('[data-ref="estado-vacio"]');
     this.selectorVista = this.obtener<HTMLElement>('[data-ref="selector-vista"]');
+    this.notificaciones = this.obtener<HTMLElement>('[data-ref="notificaciones"]');
     this.modal = this.obtener<HTMLElement>('[data-ref="modal"]');
     this.modalTexto = this.obtener<HTMLElement>('[data-ref="modal-texto"]');
     this.modalConfirmar = this.obtener<HTMLButtonElement>('[data-ref="modal-confirmar"]');
@@ -69,12 +92,22 @@ export class ContactoView {
     this.registrarEventos();
   }
 
+  // ---------- Suscripción del controlador ----------
+
   public alGuardar(manejador: ManejadorDatos): void {
     this.manejadorGuardar = manejador;
   }
 
   public alBuscar(manejador: ManejadorTexto): void {
     this.manejadorBuscar = manejador;
+  }
+
+  public alFiltrar(manejador: ManejadorFiltro): void {
+    this.manejadorFiltrar = manejador;
+  }
+
+  public alOrdenar(manejador: ManejadorOrden): void {
+    this.manejadorOrdenar = manejador;
   }
 
   public alEditar(manejador: ManejadorId): void {
@@ -89,18 +122,31 @@ export class ContactoView {
     this.manejadorCancelar = manejador;
   }
 
-  public leerFormulario(): DatosContacto {
+  public alExportar(manejador: ManejadorSimple): void {
+    this.manejadorExportar = manejador;
+  }
+
+  // ---------- API pública de renderizado ----------
+
+  public leerFormulario(): DatosFormulario {
     return {
       nombre: this.entradaNombre.value,
       telefono: this.entradaTelefono.value,
       email: this.entradaEmail.value,
+      categoria: this.selectorCategoria.value,
     };
   }
 
-  public renderizar(contactos: readonly Contacto[], total: number): void {
+  public renderizar(
+    contactos: readonly Contacto[],
+    total: number,
+    contadorCategorias: ContadorCategorias,
+  ): void {
     this.contactosVisibles = contactos;
     this.totalContactos = total;
     this.actualizarContador();
+    this.renderCategoryFilter(contadorCategorias, total);
+    this.renderContadorCategorias(contadorCategorias, total);
     this.pintarListado();
   }
 
@@ -110,8 +156,46 @@ export class ContactoView {
     this.pintarListado();
   }
 
+  /** RF-04: rellena el <select> de filtro con el conteo de cada categoría. */
+  public renderCategoryFilter(contador: ContadorCategorias, total: number): void {
+    const seleccionado: string = this.filtroCategoria.value || 'todas';
+    const opciones: string[] = [`<option value="todas">Todas (${total})</option>`];
+    for (const categoria of CATEGORIAS) {
+      opciones.push(
+        `<option value="${categoria}">${ETIQUETAS_CATEGORIA[categoria]} (${contador[categoria]})</option>`,
+      );
+    }
+    this.filtroCategoria.innerHTML = opciones.join('');
+    this.filtroCategoria.value = seleccionado;
+  }
+
+  /** RF-09: tarjetas de resumen con el total por categoría (clic = filtrar). */
+  public renderContadorCategorias(contador: ContadorCategorias, total: number): void {
+    const activo: string = this.filtroCategoria.value || 'todas';
+    const chip = (valor: string, etiqueta: string, cantidad: number): string => `
+      <button type="button" class="resumen__chip resumen__chip--${valor}${
+        activo === valor ? ' resumen__chip--activo' : ''
+      }" data-filtro="${valor}" aria-pressed="${activo === valor}">
+        <span class="resumen__numero">${cantidad}</span>
+        <span class="resumen__etiqueta">${etiqueta}</span>
+      </button>`;
+    this.resumen.innerHTML =
+      chip('todas', 'Total', total) +
+      CATEGORIAS.map((categoria): string =>
+        chip(categoria, ETIQUETAS_CATEGORIA[categoria], contador[categoria]),
+      ).join('');
+  }
+
+  /** RF-07: avatar circular con las iniciales y el color de la categoría. */
+  public renderAvatar(contacto: Contacto, extra: string = ''): string {
+    return `<span class="avatar avatar--${contacto.categoria} ${extra}" aria-hidden="true">${this.escapar(
+      contacto.iniciales,
+    )}</span>`;
+  }
+
   public mostrarErrores(errores: ErroresValidacion): void {
     this.limpiarErrores();
+    let primerInvalido: HTMLElement | null = null;
     for (const campo of CAMPOS) {
       const mensaje: string | undefined = errores[campo];
       if (mensaje === undefined) {
@@ -122,31 +206,58 @@ export class ContactoView {
         contenedor.textContent = mensaje;
         contenedor.classList.add('campo__error--visible');
       }
-      this.entradaDe(campo).classList.add('campo__control--invalido');
+      const control: HTMLElement = this.controlDe(campo);
+      control.classList.add('campo__control--invalido');
+      primerInvalido ??= control;
     }
+    primerInvalido?.focus();
   }
 
   public limpiarErrores(): void {
     for (const campo of CAMPOS) {
-      const contenedor = this.raiz.querySelector<HTMLElement>(`[data-error="${campo}"]`);
-      if (contenedor !== null) {
-        contenedor.textContent = '';
-        contenedor.classList.remove('campo__error--visible');
-      }
-      this.entradaDe(campo).classList.remove('campo__control--invalido');
+      this.limpiarErrorDe(campo);
     }
   }
 
-  public mostrarExito(mensaje: string): void {
-    this.mensajeExito.textContent = mensaje;
-    this.mensajeExito.hidden = false;
-    if (this.temporizadorExito !== null) {
-      window.clearTimeout(this.temporizadorExito);
+  private limpiarErrorDe(campo: CampoContacto): void {
+    const contenedor = this.raiz.querySelector<HTMLElement>(`[data-error="${campo}"]`);
+    if (contenedor !== null) {
+      contenedor.textContent = '';
+      contenedor.classList.remove('campo__error--visible');
     }
-    this.temporizadorExito = window.setTimeout((): void => {
-      this.mensajeExito.hidden = true;
-      this.temporizadorExito = null;
-    }, 2600);
+    this.controlDe(campo).classList.remove('campo__control--invalido');
+  }
+
+  /** Notificación flotante que se cierra sola (o con la ×). */
+  public notificar(mensaje: string, tipo: TipoNotificacion = 'exito'): void {
+    const aviso: HTMLDivElement = this.raiz.createElement('div');
+    aviso.className = `notificacion notificacion--${tipo}`;
+    aviso.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
+
+    const texto: HTMLSpanElement = this.raiz.createElement('span');
+    texto.textContent = mensaje;
+    const cerrar: HTMLButtonElement = this.raiz.createElement('button');
+    cerrar.type = 'button';
+    cerrar.className = 'notificacion__cerrar';
+    cerrar.setAttribute('aria-label', 'Cerrar notificación');
+    cerrar.textContent = '×';
+
+    aviso.append(texto, cerrar);
+    this.notificaciones.append(aviso);
+    // Evita que se apilen demasiadas: se descartan las más antiguas.
+    while (this.notificaciones.childElementCount > MAXIMO_NOTIFICACIONES) {
+      this.notificaciones.firstElementChild?.remove();
+    }
+
+    const quitar = (): void => {
+      aviso.classList.add('notificacion--saliendo');
+      window.setTimeout((): void => aviso.remove(), 250);
+    };
+    const temporizador: number = window.setTimeout(quitar, DURACION_NOTIFICACION_MS);
+    cerrar.addEventListener('click', (): void => {
+      window.clearTimeout(temporizador);
+      quitar();
+    });
   }
 
   public limpiarFormulario(): void {
@@ -158,12 +269,14 @@ export class ContactoView {
     this.entradaNombre.value = contacto.nombre;
     this.entradaTelefono.value = contacto.telefono;
     this.entradaEmail.value = contacto.email;
+    this.selectorCategoria.value = contacto.categoria;
     this.tituloFormulario.textContent = `Editando: ${contacto.nombre}`;
-    this.botonEnviar.textContent = 'Actualizar contacto';
+    this.botonEnviar.textContent = 'Actualizar';
     this.botonCancelar.hidden = false;
     this.formulario.classList.add('formulario--editando');
     this.limpiarErrores();
-    this.entradaNombre.focus();
+    this.formulario.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    this.entradaNombre.focus({ preventScroll: true });
   }
 
   public desactivarModoEdicion(): void {
@@ -174,9 +287,22 @@ export class ContactoView {
     this.limpiarFormulario();
   }
 
-  public limpiarBusqueda(): void {
-    this.entradaBusqueda.value = '';
+  /** Descarga un archivo de texto generado en memoria (para el CSV). */
+  public descargarArchivo(nombre: string, contenido: string, tipo: string): void {
+    // BOM para que Excel abra bien las tildes y la ñ.
+    const blob: Blob = new Blob(['﻿', contenido], { type: `${tipo};charset=utf-8` });
+    const url: string = URL.createObjectURL(blob);
+    const enlace: HTMLAnchorElement = this.raiz.createElement('a');
+    enlace.href = url;
+    enlace.download = nombre;
+    enlace.hidden = true;
+    this.raiz.body.append(enlace);
+    enlace.click();
+    enlace.remove();
+    window.setTimeout((): void => URL.revokeObjectURL(url), 1000);
   }
+
+  // ---------- Eventos del DOM ----------
 
   private registrarEventos(): void {
     this.formulario.addEventListener('submit', (evento: SubmitEvent): void => {
@@ -184,12 +310,43 @@ export class ContactoView {
       this.manejadorGuardar?.(this.leerFormulario());
     });
 
+    // Al corregir un campo se quita su mensaje de error.
+    for (const campo of CAMPOS) {
+      const control: HTMLInputElement | HTMLSelectElement = this.controlDe(campo);
+      const tipoEvento: string = control instanceof HTMLSelectElement ? 'change' : 'input';
+      control.addEventListener(tipoEvento, (): void => this.limpiarErrorDe(campo));
+    }
+
     this.entradaBusqueda.addEventListener('input', (): void => {
       this.manejadorBuscar?.(this.entradaBusqueda.value);
     });
 
+    this.filtroCategoria.addEventListener('change', (): void => {
+      this.emitirFiltro(this.filtroCategoria.value);
+    });
+
+    this.selectorOrden.addEventListener('change', (): void => {
+      const valor: string = this.selectorOrden.value;
+      if (valor === 'asc' || valor === 'desc') {
+        this.manejadorOrdenar?.(valor);
+      }
+    });
+
+    this.resumen.addEventListener('click', (evento: MouseEvent): void => {
+      const boton: HTMLButtonElement | null = this.botonDesdeEvento(evento, '[data-filtro]');
+      const valor: string | undefined = boton?.dataset['filtro'];
+      if (valor !== undefined) {
+        this.filtroCategoria.value = valor;
+        this.emitirFiltro(valor);
+      }
+    });
+
     this.botonCancelar.addEventListener('click', (): void => {
       this.manejadorCancelar?.();
+    });
+
+    this.botonExportar.addEventListener('click', (): void => {
+      this.manejadorExportar?.();
     });
 
     this.selectorVista.addEventListener('click', (evento: MouseEvent): void => {
@@ -244,6 +401,12 @@ export class ContactoView {
     });
   }
 
+  private emitirFiltro(valor: string): void {
+    if (valor === 'todas' || esCategoria(valor)) {
+      this.manejadorFiltrar?.(valor);
+    }
+  }
+
   private abrirModal(id: string, nombre: string): void {
     this.idPendiente = id;
     this.modalTexto.textContent = `¿Seguro que deseas eliminar a ${nombre}? Esta acción no se puede deshacer.`;
@@ -256,6 +419,8 @@ export class ContactoView {
     this.modal.hidden = true;
   }
 
+  // ---------- Plantillas ----------
+
   private pintarListado(): void {
     if (this.contactosVisibles.length === 0) {
       this.listado.innerHTML = '';
@@ -263,7 +428,7 @@ export class ContactoView {
       this.estadoVacio.textContent =
         this.totalContactos === 0
           ? 'No hay contactos. Agrega el primero con el formulario de arriba.'
-          : 'Sin resultados para tu búsqueda.';
+          : 'Ningún contacto coincide con la búsqueda y el filtro seleccionados.';
       return;
     }
 
@@ -272,14 +437,21 @@ export class ContactoView {
       this.modo === 'tarjetas' ? this.plantillaTarjetas() : this.plantillaTabla();
   }
 
+  private plantillaInsignia(contacto: Contacto): string {
+    return `<span class="insignia insignia--${contacto.categoria}">${
+      ETIQUETAS_CATEGORIA[contacto.categoria]
+    }</span>`;
+  }
+
   private plantillaTarjetas(): string {
     const tarjetas: string = this.contactosVisibles
       .map(
         (contacto: Contacto): string => `
         <article class="tarjeta">
-          <div class="tarjeta__avatar" aria-hidden="true">${this.escapar(contacto.iniciales)}</div>
+          ${this.renderAvatar(contacto, 'tarjeta__avatar')}
           <div class="tarjeta__datos">
             <h3 class="tarjeta__nombre">${this.escapar(contacto.nombre)}</h3>
+            ${this.plantillaInsignia(contacto)}
             <p class="tarjeta__dato">
               <span class="tarjeta__etiqueta">Tel</span>
               <a href="tel:${this.escapar(contacto.telefono)}">${this.escapar(contacto.telefono)}</a>
@@ -301,9 +473,14 @@ export class ContactoView {
       .map(
         (contacto: Contacto): string => `
         <tr>
-          <td data-columna="Nombre">${this.escapar(contacto.nombre)}</td>
+          <td data-columna="Nombre">
+            <span class="tabla__persona">${this.renderAvatar(contacto, 'avatar--mini')}${this.escapar(
+              contacto.nombre,
+            )}</span>
+          </td>
           <td data-columna="Teléfono">${this.escapar(contacto.telefono)}</td>
           <td data-columna="Email">${this.escapar(contacto.email)}</td>
+          <td data-columna="Categoría">${this.plantillaInsignia(contacto)}</td>
           <td data-columna="Acciones" class="tabla__acciones">${this.plantillaBotones(contacto)}</td>
         </tr>`,
       )
@@ -316,6 +493,7 @@ export class ContactoView {
               <th scope="col">Nombre</th>
               <th scope="col">Teléfono</th>
               <th scope="col">Email</th>
+              <th scope="col">Categoría</th>
               <th scope="col">Acciones</th>
             </tr>
           </thead>
@@ -348,14 +526,17 @@ export class ContactoView {
     });
   }
 
-  private entradaDe(campo: CampoContacto): HTMLInputElement {
-    if (campo === 'nombre') {
-      return this.entradaNombre;
+  private controlDe(campo: CampoContacto): HTMLInputElement | HTMLSelectElement {
+    switch (campo) {
+      case 'nombre':
+        return this.entradaNombre;
+      case 'telefono':
+        return this.entradaTelefono;
+      case 'email':
+        return this.entradaEmail;
+      case 'categoria':
+        return this.selectorCategoria;
     }
-    if (campo === 'telefono') {
-      return this.entradaTelefono;
-    }
-    return this.entradaEmail;
   }
 
   private botonDesdeEvento(evento: MouseEvent, selector: string): HTMLButtonElement | null {
