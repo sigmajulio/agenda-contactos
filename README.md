@@ -16,7 +16,7 @@ Este repositorio es la **continuación del Laboratorio #2** (Proyecto 2 — Agen
 ```bash
 pnpm install   # instala TypeScript y serve
 pnpm build     # compila src/ -> dist/
-pnpm start     # sirve la app en localhost:8080 (funciona igual en Windows, Linux y macOS)
+pnpm start     # sirve la app en localhost:5839 (funciona igual en Windows, Linux y macOS)
 ```
 
 Otros scripts útiles: `pnpm watch` (recompila al guardar) y `pnpm typecheck` (solo revisa tipos).
